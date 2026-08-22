@@ -23,7 +23,8 @@ import {
   Paperclip,
   Trash2,
   AlertTriangle,
-  LogOut
+  LogOut,
+  Bot
 } from 'lucide-react';
 
 export default function AdminDashboardPage({ onLogout }) {
@@ -257,6 +258,13 @@ export default function AdminDashboardPage({ onLogout }) {
                         <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-semibold flex items-center gap-1">
                           <Paperclip className="w-3 h-3" />
                           <span>Light Bill Attached</span>
+                        </span>
+                      )}
+
+                      {item.source && item.source.toLowerCase().includes('chatbot') && (
+                        <span className="px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 border border-purple-200 text-[10px] font-bold flex items-center gap-1">
+                          <Bot className="w-3 h-3 text-purple-600" />
+                          <span>Chatbot Assistant Lead</span>
                         </span>
                       )}
                     </div>

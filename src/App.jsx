@@ -15,6 +15,7 @@ import BlogPage from './pages/BlogPage';
 import ContactPage from './pages/ContactPage';
 import AdminDashboardPage from './pages/AdminDashboardPage';
 import AdminLoginPage from './pages/AdminLoginPage';
+import GoldenSolarChatbot from './components/chatbot/GoldenSolarChatbot';
 
 export default function App() {
   const [calculatorPrefill, setCalculatorPrefill] = useState(null);
@@ -37,7 +38,7 @@ export default function App() {
 
   return (
     <Router>
-      <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col font-sans selection:bg-solar-500 selection:text-white">
+      <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col font-sans selection:bg-solar-500 selection:text-white relative">
         {/* Top Contact Ribbon */}
         <TopHeader />
 
@@ -89,6 +90,9 @@ export default function App() {
 
         {/* Footer */}
         <Footer />
+
+        {/* Golden Solar Assistant AI Chatbot */}
+        <GoldenSolarChatbot />
       </div>
     </Router>
   );
