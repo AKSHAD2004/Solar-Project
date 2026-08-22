@@ -18,7 +18,8 @@ import {
   AlertCircle,
   RefreshCw,
   Home,
-  ChevronRight
+  ChevronRight,
+  Send
 } from 'lucide-react';
 import { 
   INITIAL_WELCOME_MESSAGE, 
@@ -34,6 +35,8 @@ export default function GoldenSolarChatbot() {
   const [isTyping, setIsTyping] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
+  const [phoneInputText, setPhoneInputText] = useState('');
+  const [pendingFlowData, setPendingFlowData] = useState(null);
 
   const messagesEndRef = useRef(null);
 
@@ -46,7 +49,7 @@ export default function GoldenSolarChatbot() {
     if (isOpen && !isMinimized) {
       scrollToBottom();
     }
-  }, [messages, isTyping, isOpen, isMinimized]);
+  }, [messages, isTyping, isOpen, isMinimized, phoneInputText]);
 
   // Open chatbot
   const handleOpen = () => {
@@ -62,6 +65,8 @@ export default function GoldenSolarChatbot() {
       const textContent = typeof responseObj === 'string' ? responseObj : responseObj.text;
       const buttons = typeof responseObj === 'string' ? null : responseObj.quickReplies;
       const isFileUpload = typeof responseObj === 'object' && responseObj.isFileUpload;
+      const isPhoneInput = typeof responseObj === 'object' && responseObj.isPhoneInput;
+      const flowContext = typeof responseObj === 'object' ? responseObj.flowContext : null;
 
       const newBotMsg = {
         id: 'msg-' + Date.now(),
@@ -69,6 +74,8 @@ export default function GoldenSolarChatbot() {
         text: textContent,
         quickReplies: buttons,
         isFileUpload: isFileUpload,
+        isPhoneInput: isPhoneInput,
+        flowContext: flowContext,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
       setMessages(prev => [...prev, newBotMsg]);
@@ -86,6 +93,48 @@ export default function GoldenSolarChatbot() {
     setMessages(prev => [...prev, userMsg]);
   };
 
+  // Handle Phone Number Submission
+  const handlePhoneSubmit = async (e, flowContext) => {
+    e.preventDefault();
+    const cleanPhone = phoneInputText.replace(/\D/g, '');
+
+    if (cleanPhone.length !== 10) {
+      alert('Please enter a valid 10-digit mobile number (e.g. 9850880687).');
+      return;
+    }
+
+    const formattedPhone = `+91 ${cleanPhone.slice(0, 5)} ${cleanPhone.slice(5)}`;
+    addUserSelection(`📱 Phone Number: ${formattedPhone}`);
+    setPhoneInputText('');
+
+    const context = flowContext || pendingFlowData || { type: 'Callback Request', timeSlot: 'Anytime (9 AM - 7 PM)' };
+
+    const payload = {
+      fullName: context.customerName || 'Chatbot Customer',
+      phone: cleanPhone,
+      city: context.city || 'Sangli / Western MH',
+      systemInterest: context.systemInterest || `Callback Request (${context.timeSlot || 'Anytime'})`,
+      message: context.message || `Callback requested via Chatbot button for time window: ${context.timeSlot || 'Anytime'}. Customer Phone: ${cleanPhone}`,
+      source: 'Golden Solar Assistant Chatbot',
+      status: 'New'
+    };
+
+    // Mark previous phone input bubble as submitted
+    setMessages(prev => prev.map(m => m.isPhoneInput ? { ...m, isSubmitted: true } : m));
+
+    await submitInquiry(payload);
+
+    addBotResponse({
+      text: `✅ CALLBACK REQUEST CONFIRMED!\n\n• Mobile Number: ${formattedPhone}\n• Preferred Time Window: ${context.timeSlot || 'Anytime (9 AM - 7 PM)'}\n\nOur senior solar consultation team at Golden Electricals will call you at ${formattedPhone} during your selected time window.`,
+      quickReplies: [
+        { label: '📋 Request Official Quote', value: 'flow_quote' },
+        { label: '📄 Upload Light Bill Photo', value: 'flow_upload_bill' },
+        { label: '📍 View Office Address', value: 'flow_contact' },
+        { label: '⬅️ Main Menu', value: 'flow_welcome' }
+      ]
+    });
+  };
+
   // Main Option Selection Handler
   const handleOptionSelect = async (option) => {
     const val = option.value;
@@ -96,7 +145,7 @@ export default function GoldenSolarChatbot() {
     // 1. Residential Solar Flow
     if (val === 'flow_residential') {
       addBotResponse({
-        text: `Great choice! ☀️ Golden Electricals provides residential rooftop solar solutions designed to help homeowners generate clean electricity, reduce energy bills by up to 90%, and claim PM Surya Ghar subsidies up to ₹78,000.\n\nPlease select your property type & location:`,
+        text: `Great choice! ☀️ Golden Electricals provides residential rooftop solar solutions designed to help homeowners generate clean electricity, reduce energy bills by up to 90%, and claim PM Surya Ghar subsidies up to ₹78,000.\n\nPlease select your property location:`,
         quickReplies: [
           { label: '🏡 Sangli City Residence', value: 'res_sangli' },
           { label: '🏢 Miraj / Vishrambag Home', value: 'res_miraj' },
@@ -123,20 +172,19 @@ export default function GoldenSolarChatbot() {
     if (val.startsWith('res_slab_')) {
       const slabText = val === 'res_slab_low' ? 'Low (< 300 units)' : val === 'res_slab_med' ? 'Medium (300 - 600 units)' : 'High (600+ units)';
       
-      await submitInquiry({
-        fullName: 'Residential Chatbot Customer',
-        phone: '',
-        city: 'Sangli / Western Maharashtra',
+      const flowData = {
+        type: 'Residential Solar',
         systemInterest: `Residential Rooftop Solar (${slabText})`,
         message: `Residential Solar lead collected via Chatbot buttons. Consumption slab: ${slabText}`,
-        source: 'Golden Solar Assistant Chatbot',
-        status: 'New'
-      });
+        timeSlot: 'Morning (9 AM - 1:00 PM)'
+      };
+      setPendingFlowData(flowData);
 
       addBotResponse({
-        text: `🎉 Thank you! Your residential solar inquiry has been logged successfully with Golden Electricals.\n\nUnder PM Surya Ghar scheme, you qualify for up to ₹78,000 central subsidy. Would you like our senior solar engineer to contact you?`,
+        text: `🎉 Thank you! Under PM Surya Ghar scheme, you qualify for up to ₹78,000 central subsidy.\n\n📞 Enter your 10-digit mobile number below so our solar engineer can contact you with the subsidy breakdown & quotation:`,
+        isPhoneInput: true,
+        flowContext: flowData,
         quickReplies: [
-          { label: '📞 Request Instant Callback', value: 'flow_callback' },
           { label: '📄 Upload Light Bill Photo', value: 'flow_upload_bill' },
           { label: '⬅️ Main Menu', value: 'flow_welcome' }
         ]
@@ -159,20 +207,19 @@ export default function GoldenSolarChatbot() {
     }
 
     if (val.startsWith('com_')) {
-      await submitInquiry({
-        fullName: 'Commercial Solar Customer',
-        phone: '',
-        city: 'Sangli Commercial Zone',
-        systemInterest: 'Commercial Solar System',
+      const flowData = {
+        type: 'Commercial Solar',
+        systemInterest: `Commercial Solar (${label})`,
         message: `Commercial Solar lead via Chatbot. Facility type: ${label}`,
-        source: 'Golden Solar Assistant Chatbot',
-        status: 'New'
-      });
+        timeSlot: 'Afternoon (1:00 PM - 5:00 PM)'
+      };
+      setPendingFlowData(flowData);
 
       addBotResponse({
-        text: `Thank you! Your commercial solar inquiry for ${label} has been recorded.\n\nCommercial solar systems qualify for 40% Accelerated Depreciation tax benefits. How would you like to proceed?`,
+        text: `Commercial solar systems qualify for 40% Accelerated Depreciation tax benefits.\n\n📞 Enter your 10-digit mobile number to request a direct engineer consultation:`,
+        isPhoneInput: true,
+        flowContext: flowData,
         quickReplies: [
-          { label: '📞 Request Callback from Engineer', value: 'flow_callback' },
           { label: '📄 Upload Electricity Bill', value: 'flow_upload_bill' },
           { label: '⬅️ Main Menu', value: 'flow_welcome' }
         ]
@@ -195,20 +242,19 @@ export default function GoldenSolarChatbot() {
     }
 
     if (val.startsWith('ind_')) {
-      await submitInquiry({
-        fullName: 'Industrial Solar Customer',
-        phone: '',
-        city: 'Miraj / Sangli Industrial Belt',
-        systemInterest: 'Industrial Solar Turnkey Project',
+      const flowData = {
+        type: 'Industrial Solar',
+        systemInterest: `Industrial Solar Project (${label})`,
         message: `Industrial Solar inquiry via Chatbot. Unit type: ${label}`,
-        source: 'Golden Solar Assistant Chatbot',
-        status: 'New'
-      });
+        timeSlot: 'Anytime'
+      };
+      setPendingFlowData(flowData);
 
       addBotResponse({
-        text: `Thank you! Your industrial solar consultation request for ${label} has been registered.\nSenior solar engineer Abhijeet Bhosale ("The Solar Man of Sangli") will review your requirement.`,
+        text: `Senior solar engineer Abhijeet Bhosale ("The Solar Man of Sangli") will review your industrial load.\n\n📞 Enter your 10-digit mobile number for direct project discussion:`,
+        isPhoneInput: true,
+        flowContext: flowData,
         quickReplies: [
-          { label: '📞 Request Senior Engineer Callback', value: 'flow_callback' },
           { label: '📄 Upload Electricity Bill PDF', value: 'flow_upload_bill' },
           { label: '⬅️ Main Menu', value: 'flow_welcome' }
         ]
@@ -231,20 +277,19 @@ export default function GoldenSolarChatbot() {
     }
 
     if (val.startsWith('farm_')) {
-      await submitInquiry({
-        fullName: 'Solar Farm Project Prospect',
-        phone: '',
-        city: 'Sangli / Maharashtra Region',
+      const flowData = {
+        type: 'Solar Farm',
         systemInterest: `Solar Farm Project (${label})`,
         message: `Solar Farm inquiry via Chatbot. Scale: ${label}`,
-        source: 'Golden Solar Assistant Chatbot',
-        status: 'New'
-      });
+        timeSlot: 'Anytime'
+      };
+      setPendingFlowData(flowData);
 
       addBotResponse({
-        text: `Thank you! Your Solar Farm consultation request (${label}) has been logged. Our utility project division will reach out.`,
+        text: `📞 Enter your 10-digit mobile number to request a MW-scale utility project consultation:`,
+        isPhoneInput: true,
+        flowContext: flowData,
         quickReplies: [
-          { label: '📞 Request Utility Consultation', value: 'flow_callback' },
           { label: '⬅️ Main Menu', value: 'flow_welcome' }
         ]
       });
@@ -305,8 +350,8 @@ export default function GoldenSolarChatbot() {
       addBotResponse({
         text: `📊 PRELIMINARY ESTIMATE (${units} Units/mo):\n\n• Recommended Solar Capacity: ${kwSize} kW\n• Rooftop Area Required: ${areaSqFt} sq. ft.\n• Est. Monthly Savings: ₹${monthlySavingsRs.toLocaleString('en-IN')}\n• Est. Annual Savings: ₹${annualSavingsRs.toLocaleString('en-IN')}\n• Subsidy Breakdown: ${subsidyNotice}\n\n⚠️ Note: Preliminary estimate. Final capacity is confirmed via physical site inspection by Golden Electricals.`,
         quickReplies: [
+          { label: '📞 Request Callback for Inspection', value: 'flow_callback' },
           { label: '📋 Request Official Quotation', value: 'flow_quote' },
-          { label: '📞 Request Callback from Team', value: 'flow_callback' },
           { label: '⬅️ Main Menu', value: 'flow_welcome' }
         ]
       });
@@ -315,20 +360,19 @@ export default function GoldenSolarChatbot() {
 
     // 8. Get Quote Flow
     if (val === 'flow_quote') {
-      await submitInquiry({
-        fullName: 'Quotation Prospect',
-        phone: '',
-        city: 'Sangli Region',
+      const flowData = {
+        type: 'Quotation Request',
         systemInterest: 'Official Tata Solar Quotation Request',
         message: 'Quotation request generated via Chatbot action button.',
-        source: 'Golden Solar Assistant Chatbot',
-        status: 'New'
-      });
+        timeSlot: 'Morning (9 AM - 1 PM)'
+      };
+      setPendingFlowData(flowData);
 
       addBotResponse({
-        text: `📋 OFFICIAL QUOTATION REQUEST REGISTERED!\n\nThank you for contacting Golden Electricals. Our senior solar technical team will review your requirement and prepare a detailed Tata Solar system proposal.\n\nChoose your preferred next step:`,
+        text: `📋 REQUEST OFFICIAL TATA SOLAR QUOTATION:\n\n📞 Enter your 10-digit mobile number so our engineers can call you with a detailed system proposal:`,
+        isPhoneInput: true,
+        flowContext: flowData,
         quickReplies: [
-          { label: '📞 Request Immediate Phone Call', value: 'flow_callback' },
           { label: '📄 Upload Light Bill Image/PDF', value: 'flow_upload_bill' },
           { label: '⬅️ Main Menu', value: 'flow_welcome' }
         ]
@@ -366,22 +410,18 @@ export default function GoldenSolarChatbot() {
     if (val.startsWith('cb_time_')) {
       const timeSlot = val === 'cb_time_morning' ? 'Morning (9 AM - 12 PM)' : val === 'cb_time_afternoon' ? 'Afternoon (12 PM - 4 PM)' : val === 'cb_time_evening' ? 'Evening (4 PM - 8 PM)' : 'URGENT ASAP';
 
-      await submitInquiry({
-        fullName: 'Callback Request Customer',
-        phone: '',
-        city: 'Sangli',
+      const flowData = {
+        type: 'Callback Request',
+        timeSlot: timeSlot,
         systemInterest: `Callback Request (${timeSlot})`,
-        message: `Customer requested callback via Chatbot button for time window: ${timeSlot}`,
-        source: 'Golden Solar Assistant Chatbot',
-        status: 'New'
-      });
+        message: `Customer requested callback via Chatbot button for time window: ${timeSlot}`
+      };
+      setPendingFlowData(flowData);
 
       addBotResponse({
-        text: `✅ CALLBACK REQUEST CONFIRMED! (${timeSlot})\n\nOur solar consultation team will call you during your selected time window. You can also reach our desk directly at ${COMPANY_CONTACT_INFO.phone}.`,
-        quickReplies: [
-          { label: '📍 View Office Address', value: 'flow_contact' },
-          { label: '⬅️ Main Menu', value: 'flow_welcome' }
-        ]
+        text: `📞 PREFERRED TIME SLOT SELECTED: ${timeSlot}\n\nPlease enter your 10-digit mobile number below so our solar consultation team can call you:`,
+        isPhoneInput: true,
+        flowContext: flowData
       });
       return;
     }
@@ -563,6 +603,47 @@ export default function GoldenSolarChatbot() {
                         </span>
                       </div>
                     </div>
+
+                    {/* Inline Phone Input Form Bubble */}
+                    {msg.sender === 'bot' && msg.isPhoneInput && !msg.isSubmitted && (
+                      <div className="pl-10 pt-1">
+                        <form 
+                          onSubmit={(e) => handlePhoneSubmit(e, msg.flowContext)} 
+                          className="p-3.5 bg-gradient-to-br from-amber-50 to-orange-50/70 border border-amber-200/90 rounded-2xl space-y-2.5 shadow-sm"
+                        >
+                          <label className="block text-xs font-extrabold text-amber-950 flex items-center gap-1.5">
+                            <Phone className="w-3.5 h-3.5 text-amber-600 animate-bounce" />
+                            <span>Enter 10-digit Mobile Number:</span>
+                          </label>
+
+                          <div className="flex items-center gap-2">
+                            <div className="relative flex-1">
+                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-amber-800">+91</span>
+                              <input
+                                type="tel"
+                                required
+                                pattern="[0-9]{10}"
+                                maxLength={10}
+                                placeholder="9850880687"
+                                value={phoneInputText}
+                                onChange={(e) => setPhoneInputText(e.target.value.replace(/\D/g, ''))}
+                                className="w-full pl-11 pr-3 py-2 bg-white rounded-xl border border-amber-300 text-xs font-extrabold text-slate-900 placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 shadow-2xs"
+                              />
+                            </div>
+
+                            <button
+                              type="submit"
+                              disabled={phoneInputText.length !== 10}
+                              className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-40 text-white font-black text-xs shadow-md transition-all shrink-0 flex items-center gap-1 active:scale-95"
+                            >
+                              <span>Submit</span>
+                              <Send className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                          <p className="text-[10px] text-amber-800 font-medium italic">Our solar consultation team will call this number directly.</p>
+                        </form>
+                      </div>
+                    )}
 
                     {/* Inline File Upload Button if requested */}
                     {msg.sender === 'bot' && msg.isFileUpload && (

@@ -365,9 +365,10 @@ export default function AdminDashboardPage({ onLogout }) {
 
                     <div className="flex flex-wrap items-center gap-4 text-xs text-slate-600">
                       {hasValidPhone(item.phone) && (
-                        <span className="flex items-center gap-1">
-                          <Phone className="w-3.5 h-3.5 text-solar-600" />
-                          <a href={`tel:${item.phone}`} className="hover:underline font-semibold">{item.phone}</a>
+                        <span className="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-950 px-2.5 py-1 rounded-lg border border-emerald-200 font-extrabold text-xs shadow-2xs">
+                          <Phone className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          <span>Phone:</span>
+                          <a href={`tel:${item.phone}`} className="hover:underline text-emerald-700 font-black">+91 {item.phone}</a>
                         </span>
                       )}
                       
