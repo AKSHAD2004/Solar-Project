@@ -125,14 +125,15 @@ export default function GoldenSolarChatbot() {
     await submitInquiry(payload);
 
     addBotResponse({
-      text: `✅ CALLBACK REQUEST CONFIRMED!\n\n• Mobile Number: ${formattedPhone}\n• Preferred Time Window: ${context.timeSlot || 'Anytime (9 AM - 7 PM)'}\n\nOur senior solar consultation team at Golden Electricals will call you at ${formattedPhone} during your selected time window.`,
-      quickReplies: [
-        { label: '📋 Request Official Quote', value: 'flow_quote' },
-        { label: '📄 Upload Light Bill Photo', value: 'flow_upload_bill' },
-        { label: '📍 View Office Address', value: 'flow_contact' },
-        { label: '⬅️ Main Menu', value: 'flow_welcome' }
-      ]
+      text: `✅ CALLBACK REQUEST CONFIRMED!\n\n• Mobile Number: ${formattedPhone}\n• Preferred Time Window: ${context.timeSlot || 'Anytime (9 AM - 7 PM)'}\n\nOur senior solar consultation team at Golden Electricals will call you at ${formattedPhone} during your selected time window.\n\n✨ Thank you! This chat session will close automatically.`,
     });
+
+    // Auto-close chatbot window after confirmation and reset conversation
+    setTimeout(() => {
+      setIsOpen(false);
+      setMessages([INITIAL_WELCOME_MESSAGE]);
+      setPendingFlowData(null);
+    }, 2500);
   };
 
   // Main Option Selection Handler
