@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Sun, 
   Bot, 
-  Send, 
   X, 
   Minus, 
   Paperclip, 
@@ -18,12 +17,12 @@ import {
   MessageSquare,
   AlertCircle,
   RefreshCw,
-  UserCheck
+  Home,
+  ChevronRight
 } from 'lucide-react';
 import { 
   INITIAL_WELCOME_MESSAGE, 
   FAQS, 
-  processUserMessage, 
   COMPANY_CONTACT_INFO 
 } from './chatbotKnowledge';
 import { submitInquiry } from '../../firebase/enquiryService';
@@ -32,18 +31,13 @@ export default function GoldenSolarChatbot() {
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const [messages, setMessages] = useState([INITIAL_WELCOME_MESSAGE]);
-  const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
-  const [activeFlow, setActiveFlow] = useState(null); // Active conversational flow state
-  const [flowData, setFlowData] = useState({}); // Form step data accumulator
-  const [uploadFile, setUploadFile] = useState(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
 
   const messagesEndRef = useRef(null);
-  const inputRef = useRef(null);
 
-  // Auto-scroll to latest message
+  // Auto-scroll to bottom of chat
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -58,29 +52,31 @@ export default function GoldenSolarChatbot() {
   const handleOpen = () => {
     setIsOpen(true);
     setIsMinimized(false);
-    setTimeout(() => {
-      inputRef.current?.focus();
-    }, 200);
   };
 
-  // Append bot message with typing simulation
-  const addBotResponse = (responseObj, delayMs = 600) => {
+  // Add bot response with typing delay
+  const addBotResponse = (responseObj, delayMs = 400) => {
     setIsTyping(true);
     setTimeout(() => {
       setIsTyping(false);
+      const textContent = typeof responseObj === 'string' ? responseObj : responseObj.text;
+      const buttons = typeof responseObj === 'string' ? null : responseObj.quickReplies;
+      const isFileUpload = typeof responseObj === 'object' && responseObj.isFileUpload;
+
       const newBotMsg = {
         id: 'msg-' + Date.now(),
         sender: 'bot',
-        text: typeof responseObj === 'string' ? responseObj : responseObj.text,
-        quickReplies: responseObj.quickReplies || null,
+        text: textContent,
+        quickReplies: buttons,
+        isFileUpload: isFileUpload,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
       setMessages(prev => [...prev, newBotMsg]);
     }, delayMs);
   };
 
-  // Helper to add user message
-  const addUserMessage = (text) => {
+  // Add user selection message
+  const addUserSelection = (text) => {
     const userMsg = {
       id: 'msg-user-' + Date.now(),
       sender: 'user',
@@ -90,419 +86,362 @@ export default function GoldenSolarChatbot() {
     setMessages(prev => [...prev, userMsg]);
   };
 
-  // Handle flow transitions & data collection
-  const handleFlowStep = async (userInputValue) => {
-    const currentStep = activeFlow;
+  // Main Option Selection Handler
+  const handleOptionSelect = async (option) => {
+    const val = option.value;
+    const label = option.label;
 
-    // 1. Residential Flow Steps
-    if (currentStep === 'residential_start') {
-      addUserMessage(userInputValue || '☀️ Residential Solar');
-      setFlowData(prev => ({ ...prev, systemType: 'Residential Solar' }));
-      setActiveFlow('res_name');
-      addBotResponse('Great choice! ☀️ Golden Electricals provides residential rooftop solar solutions designed to help homeowners generate clean electricity and claim PM Surya Ghar subsidies up to ₹78,000.\n\nPlease enter your Full Name:');
-      return;
-    }
-    if (currentStep === 'res_name') {
-      addUserMessage(userInputValue);
-      setFlowData(prev => ({ ...prev, fullName: userInputValue }));
-      setActiveFlow('res_phone');
-      addBotResponse('Thank you! What is your 10-digit Mobile Number?');
-      return;
-    }
-    if (currentStep === 'res_phone') {
-      addUserMessage(userInputValue);
-      setFlowData(prev => ({ ...prev, phone: userInputValue }));
-      setActiveFlow('res_location');
-      addBotResponse('Got it. What is your City / Location in Sangli or Western Maharashtra?');
-      return;
-    }
-    if (currentStep === 'res_location') {
-      addUserMessage(userInputValue);
-      setFlowData(prev => ({ ...prev, city: userInputValue }));
-      setActiveFlow('res_bill');
-      addBotResponse('What is your average Monthly Electricity Bill (in ₹)? (e.g. ₹3,500)');
-      return;
-    }
-    if (currentStep === 'res_bill') {
-      addUserMessage(userInputValue);
-      const finalPayload = {
-        ...flowData,
-        monthlyBill: userInputValue,
-        systemInterest: 'Residential Rooftop Solar (PM Surya Ghar Subsidy)',
-        message: 'Residential Solar lead collected via Golden Solar Assistant Chatbot.',
-        source: 'Golden Solar Assistant Chatbot',
-        status: 'New'
-      };
-      await submitInquiry(finalPayload);
-      setActiveFlow(null);
+    addUserSelection(label);
+
+    // 1. Residential Solar Flow
+    if (val === 'flow_residential') {
       addBotResponse({
-        text: `Thank you, ${flowData.fullName || 'valued customer'}! 🎉\nYour residential solar requirement has been recorded successfully by Golden Electricals.\nWould you like to request a formal quotation or an instant callback from our solar team?`,
+        text: `Great choice! ☀️ Golden Electricals provides residential rooftop solar solutions designed to help homeowners generate clean electricity, reduce energy bills by up to 90%, and claim PM Surya Ghar subsidies up to ₹78,000.\n\nPlease select your property type & location:`,
         quickReplies: [
-          { label: '📋 Get Quote', value: 'flow_quote' },
-          { label: '📞 Request Callback', value: 'flow_callback' }
+          { label: '🏡 Sangli City Residence', value: 'res_sangli' },
+          { label: '🏢 Miraj / Vishrambag Home', value: 'res_miraj' },
+          { label: '📍 Other Location in MH', value: 'res_other' },
+          { label: '⬅️ Main Menu', value: 'flow_welcome' }
         ]
       });
       return;
     }
 
-    // 2. Commercial Flow Steps
-    if (currentStep === 'commercial_start') {
-      addUserMessage(userInputValue || '🏢 Commercial Solar');
-      setFlowData(prev => ({ ...prev, systemType: 'Commercial Solar' }));
-      setActiveFlow('com_name');
-      addBotResponse('Golden Electricals provides customized commercial rooftop solar solutions to lower power tariffs for businesses, hospitals, and schools.\n\nPlease enter your Full Name or Business Name:');
-      return;
-    }
-    if (currentStep === 'com_name') {
-      addUserMessage(userInputValue);
-      setFlowData(prev => ({ ...prev, fullName: userInputValue }));
-      setActiveFlow('com_phone');
-      addBotResponse('Please enter your Contact Mobile Number:');
-      return;
-    }
-    if (currentStep === 'com_phone') {
-      addUserMessage(userInputValue);
-      setFlowData(prev => ({ ...prev, phone: userInputValue }));
-      setActiveFlow('com_bill');
-      addBotResponse('What is your average Monthly Electricity Bill or Units consumption? (e.g. ₹25,000 or 2500 units)');
-      return;
-    }
-    if (currentStep === 'com_bill') {
-      addUserMessage(userInputValue);
-      const finalPayload = {
-        ...flowData,
-        monthlyBill: userInputValue,
-        systemInterest: 'Commercial Rooftop Solar Solution',
-        message: 'Commercial Solar lead collected via Golden Solar Assistant Chatbot.',
-        source: 'Golden Solar Assistant Chatbot',
-        status: 'New'
-      };
-      await submitInquiry(finalPayload);
-      setActiveFlow(null);
+    if (val === 'res_sangli' || val === 'res_miraj' || val === 'res_other') {
       addBotResponse({
-        text: `Thank you! Your commercial solar inquiry has been recorded. Our engineering team will evaluate your consumption and contact you shortly.`,
+        text: `Thank you! Select your average Monthly Electricity Consumption slab:`,
         quickReplies: [
-          { label: '📞 Request Callback', value: 'flow_callback' },
-          { label: '📄 Upload Light Bill', value: 'flow_upload_bill' }
+          { label: '⚡ Low (< 300 kWh / ₹2,500/mo)', value: 'res_slab_low' },
+          { label: '⚡ Medium (300 - 600 kWh / ₹5,000/mo)', value: 'res_slab_med' },
+          { label: '⚡ High (600+ kWh / ₹8,000+/mo)', value: 'res_slab_high' },
+          { label: '⬅️ Main Menu', value: 'flow_welcome' }
         ]
       });
       return;
     }
 
-    // 3. Industrial Flow Steps
-    if (currentStep === 'industrial_start') {
-      addUserMessage(userInputValue || '🏭 Industrial Solar');
-      setFlowData(prev => ({ ...prev, systemType: 'Industrial Solar' }));
-      setActiveFlow('ind_name');
-      addBotResponse('Industrial solar requirements depend on your sanctioned load, transformer specs, and rooftop structural design.\n\nPlease enter your Company / Factory Name and Contact Name:');
+    if (val.startsWith('res_slab_')) {
+      const slabText = val === 'res_slab_low' ? 'Low (< 300 units)' : val === 'res_slab_med' ? 'Medium (300 - 600 units)' : 'High (600+ units)';
+      
+      await submitInquiry({
+        fullName: 'Residential Chatbot Customer',
+        phone: 'Pending Callback',
+        city: 'Sangli / Western Maharashtra',
+        systemInterest: `Residential Rooftop Solar (${slabText})`,
+        message: `Residential Solar lead collected via Chatbot buttons. Consumption slab: ${slabText}`,
+        source: 'Golden Solar Assistant Chatbot',
+        status: 'New'
+      });
+
+      addBotResponse({
+        text: `🎉 Thank you! Your residential solar inquiry has been logged successfully with Golden Electricals.\n\nUnder PM Surya Ghar scheme, you qualify for up to ₹78,000 central subsidy. Would you like our senior solar engineer to contact you?`,
+        quickReplies: [
+          { label: '📞 Request Instant Callback', value: 'flow_callback' },
+          { label: '📄 Upload Light Bill Photo', value: 'flow_upload_bill' },
+          { label: '⬅️ Main Menu', value: 'flow_welcome' }
+        ]
+      });
       return;
     }
-    if (currentStep === 'ind_name') {
-      addUserMessage(userInputValue);
-      setFlowData(prev => ({ ...prev, fullName: userInputValue }));
-      setActiveFlow('ind_phone');
-      addBotResponse('What is your Direct Mobile Number?');
+
+    // 2. Commercial Solar Flow
+    if (val === 'flow_commercial') {
+      addBotResponse({
+        text: `Golden Electricals provides customized commercial rooftop solar solutions to lower power tariffs for businesses, offices, hospitals, and educational institutions in Sangli.\n\nSelect your commercial facility type:`,
+        quickReplies: [
+          { label: '🏢 Commercial Office / Hospital', value: 'com_office' },
+          { label: '🏪 Retail Shop / Hotel', value: 'com_shop' },
+          { label: '🏫 School / Institute Campus', value: 'com_school' },
+          { label: '⬅️ Main Menu', value: 'flow_welcome' }
+        ]
+      });
       return;
     }
-    if (currentStep === 'ind_phone') {
-      addUserMessage(userInputValue);
-      setFlowData(prev => ({ ...prev, phone: userInputValue }));
-      setActiveFlow('ind_load');
-      addBotResponse('What is your Factory Location and Monthly Electricity Bill or Sanctioned Load (HP/kW)?');
+
+    if (val.startsWith('com_')) {
+      await submitInquiry({
+        fullName: 'Commercial Solar Customer',
+        phone: 'Pending Callback',
+        city: 'Sangli Commercial Zone',
+        systemInterest: 'Commercial Solar System',
+        message: `Commercial Solar lead via Chatbot. Facility type: ${label}`,
+        source: 'Golden Solar Assistant Chatbot',
+        status: 'New'
+      });
+
+      addBotResponse({
+        text: `Thank you! Your commercial solar inquiry for ${label} has been recorded.\n\nCommercial solar systems qualify for 40% Accelerated Depreciation tax benefits. How would you like to proceed?`,
+        quickReplies: [
+          { label: '📞 Request Callback from Engineer', value: 'flow_callback' },
+          { label: '📄 Upload Electricity Bill', value: 'flow_upload_bill' },
+          { label: '⬅️ Main Menu', value: 'flow_welcome' }
+        ]
+      });
       return;
     }
-    if (currentStep === 'ind_load') {
-      addUserMessage(userInputValue);
-      const finalPayload = {
-        ...flowData,
-        message: `Industrial Solar Inquiry. Location & Load: ${userInputValue}`,
+
+    // 3. Industrial Solar Flow
+    if (val === 'flow_industrial') {
+      addBotResponse({
+        text: `Industrial solar requirements depend on your sanctioned load, transformer capacity, and rooftop structural design.\n\nSelect your industrial unit type:`,
+        quickReplies: [
+          { label: '🏭 Textile / Packaging Mill', value: 'ind_mill' },
+          { label: '⚙️ Manufacturing / Processing Plant', value: 'ind_plant' },
+          { label: '🏗️ Industrial Shed (Tin/RCC)', value: 'ind_shed' },
+          { label: '⬅️ Main Menu', value: 'flow_welcome' }
+        ]
+      });
+      return;
+    }
+
+    if (val.startsWith('ind_')) {
+      await submitInquiry({
+        fullName: 'Industrial Solar Customer',
+        phone: 'Pending Callback',
+        city: 'Miraj / Sangli Industrial Belt',
         systemInterest: 'Industrial Solar Turnkey Project',
+        message: `Industrial Solar inquiry via Chatbot. Unit type: ${label}`,
         source: 'Golden Solar Assistant Chatbot',
         status: 'New'
-      };
-      await submitInquiry(finalPayload);
-      setActiveFlow(null);
+      });
+
       addBotResponse({
-        text: `Thank you! Your industrial solar consultation request has been logged. Senior engineer Abhijeet Bhosale and our technical team will review your site specifications.`,
+        text: `Thank you! Your industrial solar consultation request for ${label} has been registered.\nSenior solar engineer Abhijeet Bhosale ("The Solar Man of Sangli") will review your requirement.`,
         quickReplies: [
-          { label: '📞 Request Callback', value: 'flow_callback' },
-          { label: '📄 Upload Light Bill', value: 'flow_upload_bill' }
+          { label: '📞 Request Senior Engineer Callback', value: 'flow_callback' },
+          { label: '📄 Upload Electricity Bill PDF', value: 'flow_upload_bill' },
+          { label: '⬅️ Main Menu', value: 'flow_welcome' }
         ]
       });
       return;
     }
 
     // 4. Solar Farm Flow
-    if (currentStep === 'farm_start') {
-      addUserMessage(userInputValue || '🌞 Solar Farm');
-      setFlowData(prev => ({ ...prev, systemType: 'Solar Farm' }));
-      setActiveFlow('farm_name');
-      addBotResponse('Golden Electricals provides megawatt-scale solar farm solutions for ground-mounted renewable generation.\n\nPlease enter your Name / Organization:');
-      return;
-    }
-    if (currentStep === 'farm_name') {
-      addUserMessage(userInputValue);
-      setFlowData(prev => ({ ...prev, fullName: userInputValue }));
-      setActiveFlow('farm_phone');
-      addBotResponse('Please enter your Mobile Number:');
-      return;
-    }
-    if (currentStep === 'farm_phone') {
-      addUserMessage(userInputValue);
-      const finalPayload = {
-        ...flowData,
-        phone: userInputValue,
-        systemInterest: 'Utility-Scale Solar Farm',
-        message: 'Solar Farm consultation request collected via Chatbot.',
-        source: 'Golden Solar Assistant Chatbot',
-        status: 'New'
-      };
-      await submitInquiry(finalPayload);
-      setActiveFlow(null);
+    if (val === 'flow_farm') {
       addBotResponse({
-        text: `Thank you! Your Solar Farm consultation request has been submitted successfully. Our team will contact you.`,
+        text: `Golden Electricals engineers utility-scale ground-mounted Solar Farms for MW-scale power generation, PPA power evacuation, and agricultural solar pumps.\n\nSelect your land / project scale:`,
         quickReplies: [
-          { label: '📞 Request Callback', value: 'flow_callback' }
+          { label: '🌾 1 to 5 Acres (0.5 to 2 MW)', value: 'farm_small' },
+          { label: '🏞️ 5+ Acres (Utility Scale MW)', value: 'farm_large' },
+          { label: '💧 Agricultural Solar Pumps', value: 'farm_pump' },
+          { label: '⬅️ Main Menu', value: 'flow_welcome' }
         ]
       });
       return;
     }
 
-    // 5. Calculator Flow
-    if (currentStep === 'calc_units') {
-      addUserMessage(userInputValue);
-      const units = Math.max(100, Number(userInputValue.replace(/[^0-9]/g, '')) || 400);
+    if (val.startsWith('farm_')) {
+      await submitInquiry({
+        fullName: 'Solar Farm Project Prospect',
+        phone: 'Pending Callback',
+        city: 'Sangli / Maharashtra Region',
+        systemInterest: `Solar Farm Project (${label})`,
+        message: `Solar Farm inquiry via Chatbot. Scale: ${label}`,
+        source: 'Golden Solar Assistant Chatbot',
+        status: 'New'
+      });
+
+      addBotResponse({
+        text: `Thank you! Your Solar Farm consultation request (${label}) has been logged. Our utility project division will reach out.`,
+        quickReplies: [
+          { label: '📞 Request Utility Consultation', value: 'flow_callback' },
+          { label: '⬅️ Main Menu', value: 'flow_welcome' }
+        ]
+      });
+      return;
+    }
+
+    // 5. Cost & Savings FAQ
+    if (val === 'faq_cost') {
+      addBotResponse({
+        text: `💰 SOLAR COST & SAVINGS OVERVIEW:\n\n• Residential Solar: Eligible for up to ₹78,000 PM Surya Ghar Central Government Subsidy.\n• Commercial/Industrial: Eligible for 40% Accelerated Tax Depreciation.\n• Payback Period: Typically 3 to 4 years, followed by 20+ years of free solar energy!\n\nExact system investment depends on your sanctioned load, panel efficiency (Tata Solar), and mounting structure.`,
+        quickReplies: [
+          { label: '📊 Calculate Solar Requirement', value: 'flow_calculator' },
+          { label: '📋 Request Custom Quote', value: 'flow_quote' },
+          { label: '⬅️ Main Menu', value: 'flow_welcome' }
+        ]
+      });
+      return;
+    }
+
+    // 6. On-Grid vs Off-Grid Comparison
+    if (val === 'flow_ongrid_vs_offgrid') {
+      addBotResponse({
+        text: `☀️ ON-GRID SOLAR:\n• Connected to MSEDCL electricity grid\n• Uses net-metering to export excess energy\n• Most economical choice for homes & businesses\n\n🔋 OFF-GRID SOLAR:\n• Operates independently using battery storage\n• Provides power during grid blackouts\n• Ideal for remote locations\n\nWhich system type would you like to explore?`,
+        quickReplies: [
+          { label: '☀️ Explore On-Grid Solar', value: 'flow_residential' },
+          { label: '🔋 Explore Off-Grid Solar', value: 'flow_callback' },
+          { label: '📊 Calculate System Capacity', value: 'flow_calculator' },
+          { label: '⬅️ Main Menu', value: 'flow_welcome' }
+        ]
+      });
+      return;
+    }
+
+    // 7. Interactive Calculator Flow
+    if (val === 'flow_calculator') {
+      addBotResponse({
+        text: `📊 SELECT YOUR MONTHLY ELECTRICITY CONSUMPTION:`,
+        quickReplies: [
+          { label: '⚡ 250 Units (3 kW System)', value: 'calc_250' },
+          { label: '⚡ 450 Units (4 kW System)', value: 'calc_450' },
+          { label: '⚡ 800 Units (7 kW System)', value: 'calc_800' },
+          { label: '⚡ 1500 Units (13 kW System)', value: 'calc_1500' },
+          { label: '⬅️ Main Menu', value: 'flow_welcome' }
+        ]
+      });
+      return;
+    }
+
+    if (val.startsWith('calc_')) {
+      const units = val === 'calc_250' ? 250 : val === 'calc_450' ? 450 : val === 'calc_800' ? 800 : 1500;
       const kwSize = Math.ceil(units / 120);
       const areaSqFt = kwSize * 80;
       const monthlySavingsRs = Math.round(kwSize * 120 * 8.5);
       const annualSavingsRs = monthlySavingsRs * 12;
 
-      let subsidyNotice = kwSize >= 3 ? 'Cap ₹78,000 Central PM Surya Ghar Subsidy' : `₹${kwSize * 30000} PM Surya Ghar Subsidy`;
+      let subsidyNotice = kwSize >= 3 ? 'Cap ₹78,000 PM Surya Ghar Subsidy' : `₹${kwSize * 30000} PM Surya Ghar Subsidy`;
 
-      setActiveFlow(null);
       addBotResponse({
-        text: `📊 PRELIMINARY SOLAR ESTIMATE:\n\n• Recommended Capacity: ${kwSize} kW\n• Rooftop Area Required: ${areaSqFt} sq. ft.\n• Est. Monthly Savings: ₹${monthlySavingsRs.toLocaleString('en-IN')}\n• Est. Annual Savings: ₹${annualSavingsRs.toLocaleString('en-IN')}\n• Government Subsidy: ${subsidyNotice}\n\n⚠️ Note: This is a preliminary calculation. Final system sizing and net-metering approval will be confirmed through site evaluation by Golden Electricals engineers.`,
+        text: `📊 PRELIMINARY ESTIMATE (${units} Units/mo):\n\n• Recommended Solar Capacity: ${kwSize} kW\n• Rooftop Area Required: ${areaSqFt} sq. ft.\n• Est. Monthly Savings: ₹${monthlySavingsRs.toLocaleString('en-IN')}\n• Est. Annual Savings: ₹${annualSavingsRs.toLocaleString('en-IN')}\n• Subsidy Breakdown: ${subsidyNotice}\n\n⚠️ Note: Preliminary estimate. Final capacity is confirmed via physical site inspection by Golden Electricals.`,
         quickReplies: [
-          { label: '📋 Get Quote', value: 'flow_quote' },
-          { label: '📞 Request Callback', value: 'flow_callback' }
+          { label: '📋 Request Official Quotation', value: 'flow_quote' },
+          { label: '📞 Request Callback from Team', value: 'flow_callback' },
+          { label: '⬅️ Main Menu', value: 'flow_welcome' }
         ]
       });
       return;
     }
 
-    // 6. Callback Request Flow
-    if (currentStep === 'callback_name') {
-      addUserMessage(userInputValue);
-      setFlowData(prev => ({ ...prev, fullName: userInputValue }));
-      setActiveFlow('callback_phone');
-      addBotResponse('Please enter your 10-digit Mobile Number for the callback:');
-      return;
-    }
-    if (currentStep === 'callback_phone') {
-      addUserMessage(userInputValue);
-      const finalPayload = {
-        fullName: flowData.fullName || 'Callback Request',
-        phone: userInputValue,
-        city: 'Sangli',
-        systemInterest: 'Instant Callback Request',
-        message: 'Customer requested direct callback via Golden Solar Assistant Chatbot.',
-        source: 'Golden Solar Assistant Chatbot',
-        status: 'New'
-      };
-      await submitInquiry(finalPayload);
-      setActiveFlow(null);
-      addBotResponse({
-        text: `✅ Your callback request has been submitted successfully!\nOur team will call you at ${userInputValue} at the earliest.`,
-        quickReplies: [
-          { label: '☀️ Residential Solar', value: 'flow_residential' },
-          { label: '📞 View Office Contact', value: 'faq_contact' }
-        ]
-      });
-      return;
-    }
-
-    // 7. General Quote Flow
-    if (currentStep === 'quote_name') {
-      addUserMessage(userInputValue);
-      setFlowData(prev => ({ ...prev, fullName: userInputValue }));
-      setActiveFlow('quote_phone');
-      addBotResponse('What is your Mobile Number?');
-      return;
-    }
-    if (currentStep === 'quote_phone') {
-      addUserMessage(userInputValue);
-      setFlowData(prev => ({ ...prev, phone: userInputValue }));
-      setActiveFlow('quote_req');
-      addBotResponse('Please enter your Property Address & Solar System Requirement (e.g. 5 kW On-Grid Home Solar in Sangli):');
-      return;
-    }
-    if (currentStep === 'quote_req') {
-      addUserMessage(userInputValue);
-      const finalPayload = {
-        ...flowData,
-        systemInterest: userInputValue,
-        message: `Quote request via Chatbot: ${userInputValue}`,
-        source: 'Golden Solar Assistant Chatbot',
-        status: 'New'
-      };
-      await submitInquiry(finalPayload);
-      setActiveFlow(null);
-      addBotResponse({
-        text: `Thank you for contacting Golden Electricals! ☀️\nYour solar quotation enquiry has been submitted successfully. Our team will review your requirement and contact you.`,
-        quickReplies: [
-          { label: '📄 Upload Light Bill', value: 'flow_upload_bill' },
-          { label: '📞 Request Callback', value: 'flow_callback' }
-        ]
-      });
-      return;
-    }
-  };
-
-  // Handle Quick Reply Clicks
-  const handleQuickReply = (item) => {
-    const val = item.value;
-    const label = item.label;
-
-    if (val === 'flow_residential') {
-      handleFlowStep(label);
-      return;
-    }
-    if (val === 'flow_commercial') {
-      setActiveFlow('commercial_start');
-      handleFlowStep(label);
-      return;
-    }
-    if (val === 'flow_industrial') {
-      setActiveFlow('industrial_start');
-      handleFlowStep(label);
-      return;
-    }
-    if (val === 'flow_farm') {
-      setActiveFlow('farm_start');
-      handleFlowStep(label);
-      return;
-    }
-    if (val === 'flow_calculator') {
-      addUserMessage(label);
-      setActiveFlow('calc_units');
-      addBotResponse('Let\'s calculate your recommended solar system capacity!\n\nPlease enter your average Monthly Electricity Consumption in Units (kWh) or Monthly Bill in ₹: (e.g. 450 units)');
-      return;
-    }
-    if (val === 'flow_ongrid_vs_offgrid') {
-      addUserMessage(label);
-      const matched = FAQS.find(f => f.keywords.includes('difference'));
-      addBotResponse(matched);
-      return;
-    }
-    if (val === 'flow_contact' || val === 'faq_contact') {
-      addUserMessage(label);
-      addBotResponse({
-        text: `📍 Golden Electricals Office:\n${COMPANY_CONTACT_INFO.address}\n\n📞 Call Us: ${COMPANY_CONTACT_INFO.phone}\n✉️ Email: ${COMPANY_CONTACT_INFO.email}\n👨‍💼 Founder: ${COMPANY_CONTACT_INFO.founder}`,
-        quickReplies: [
-          { label: '📞 Request Callback', value: 'flow_callback' },
-          { label: '📋 Get Quote', value: 'flow_quote' }
-        ]
-      });
-      return;
-    }
-    if (val === 'flow_callback') {
-      addUserMessage(label);
-      setActiveFlow('callback_name');
-      addBotResponse('Please enter your Full Name for the callback request:');
-      return;
-    }
+    // 8. Get Quote Flow
     if (val === 'flow_quote') {
-      addUserMessage(label);
-      setActiveFlow('quote_name');
-      addBotResponse('To generate an accurate quotation, please enter your Full Name:');
+      await submitInquiry({
+        fullName: 'Quotation Prospect',
+        phone: 'Pending Callback',
+        city: 'Sangli Region',
+        systemInterest: 'Official Tata Solar Quotation Request',
+        message: 'Quotation request generated via Chatbot action button.',
+        source: 'Golden Solar Assistant Chatbot',
+        status: 'New'
+      });
+
+      addBotResponse({
+        text: `📋 OFFICIAL QUOTATION REQUEST REGISTERED!\n\nThank you for contacting Golden Electricals. Our senior solar technical team will review your requirement and prepare a detailed Tata Solar system proposal.\n\nChoose your preferred next step:`,
+        quickReplies: [
+          { label: '📞 Request Immediate Phone Call', value: 'flow_callback' },
+          { label: '📄 Upload Light Bill Image/PDF', value: 'flow_upload_bill' },
+          { label: '⬅️ Main Menu', value: 'flow_welcome' }
+        ]
+      });
       return;
     }
+
+    // 9. Upload Light Bill Flow
     if (val === 'flow_upload_bill') {
-      addUserMessage(label);
       addBotResponse({
-        text: `📄 Uploading your recent electricity bill helps our engineers analyze your tariff slab and design the perfect solar net-metering capacity for you.\n\nClick the paperclip button in the input bar or use the upload control below:`,
+        text: `📄 UPLOAD YOUR RECENT ELECTRICITY BILL:\n\nAttaching your light bill allows our engineers to analyze your MSEDCL tariff slab, monthly consumption peaks, and design the optimal solar net-metering layout.\n\nClick the button below to select your file (PDF, JPG, PNG):`,
+        isFileUpload: true,
         quickReplies: [
-          { label: '📋 Request Quote', value: 'flow_quote' },
-          { label: '📞 Request Callback', value: 'flow_callback' }
-        ]
-      });
-      return;
-    }
-    if (val === 'flow_support') {
-      addUserMessage(label);
-      addBotResponse({
-        text: `🔧 Golden Electricals Customer Support:\n\nFor existing solar installations, inverter troubleshooting, maintenance checks, or documentation assistance, please choose an option or call our support desk at +91 98508 80687.`,
-        quickReplies: [
-          { label: '📞 Request Service Callback', value: 'flow_callback' },
-          { label: '📍 Office Location', value: 'faq_contact' }
+          { label: '📞 Request Callback Instead', value: 'flow_callback' },
+          { label: '⬅️ Main Menu', value: 'flow_welcome' }
         ]
       });
       return;
     }
 
-    // Default trigger
-    addUserMessage(label);
-    const nlpResult = processUserMessage(label);
-    addBotResponse(nlpResult);
-  };
-
-  // Submit Text Input
-  const handleSendText = (e) => {
-    if (e) e.preventDefault();
-    const text = inputText.trim();
-    if (!text) return;
-
-    setInputText('');
-
-    if (activeFlow) {
-      handleFlowStep(text);
+    // 10. Request Callback Flow
+    if (val === 'flow_callback') {
+      addBotResponse({
+        text: `📞 SELECT PREFERRED CALLBACK TIME WINDOW:`,
+        quickReplies: [
+          { label: '🌅 Morning (9:00 AM - 12:00 PM)', value: 'cb_time_morning' },
+          { label: '☀️ Afternoon (12:00 PM - 4:00 PM)', value: 'cb_time_afternoon' },
+          { label: '🌇 Evening (4:00 PM - 8:00 PM)', value: 'cb_time_evening' },
+          { label: '⚡ Urgent - Call ASAP', value: 'cb_time_urgent' }
+        ]
+      });
       return;
     }
 
-    addUserMessage(text);
-    const response = processUserMessage(text);
-    addBotResponse(response);
+    if (val.startsWith('cb_time_')) {
+      const timeSlot = val === 'cb_time_morning' ? 'Morning (9 AM - 12 PM)' : val === 'cb_time_afternoon' ? 'Afternoon (12 PM - 4 PM)' : val === 'cb_time_evening' ? 'Evening (4 PM - 8 PM)' : 'URGENT ASAP';
+
+      await submitInquiry({
+        fullName: 'Callback Request Customer',
+        phone: 'Pending Direct Contact',
+        city: 'Sangli',
+        systemInterest: `Callback Request (${timeSlot})`,
+        message: `Customer requested callback via Chatbot button for time window: ${timeSlot}`,
+        source: 'Golden Solar Assistant Chatbot',
+        status: 'New'
+      });
+
+      addBotResponse({
+        text: `✅ CALLBACK REQUEST CONFIRMED! (${timeSlot})\n\nOur solar consultation team will call you during your selected time window. You can also reach our desk directly at ${COMPANY_CONTACT_INFO.phone}.`,
+        quickReplies: [
+          { label: '📍 View Office Address', value: 'flow_contact' },
+          { label: '⬅️ Main Menu', value: 'flow_welcome' }
+        ]
+      });
+      return;
+    }
+
+    // 11. Contact Info Flow
+    if (val === 'flow_contact') {
+      addBotResponse({
+        text: `📍 GOLDEN ELECTRICALS HEADQUARTERS:\n${COMPANY_CONTACT_INFO.address}\n\n📞 Direct Calls: ${COMPANY_CONTACT_INFO.phone}\n✉️ Email: ${COMPANY_CONTACT_INFO.email}\n👨‍💼 Founder: ${COMPANY_CONTACT_INFO.founder}\n🏆 Partnership: ${COMPANY_CONTACT_INFO.tataPartnership}`,
+        quickReplies: [
+          { label: '📞 Request Instant Callback', value: 'flow_callback' },
+          { label: '📋 Get Quote', value: 'flow_quote' },
+          { label: '⬅️ Main Menu', value: 'flow_welcome' }
+        ]
+      });
+      return;
+    }
+
+    // Reset to Welcome / Main Menu
+    setMessages([INITIAL_WELCOME_MESSAGE]);
   };
 
-  // Handle File Upload
+  // Handle File Upload from Chatbot Button
   const handleFileUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     if (file.size > 10 * 1024 * 1024) {
-      alert('File size exceeds 10MB limit. Please upload a smaller image or PDF.');
+      alert('File size exceeds 10MB limit. Please select a smaller file.');
       return;
     }
 
     setIsUploading(true);
-    setUploadFile(file);
-    setUploadProgress(30);
+    setUploadProgress(35);
 
     setTimeout(async () => {
       setUploadProgress(100);
       setIsUploading(false);
       
       const payload = {
-        fullName: 'Chatbot Light Bill Upload',
+        fullName: 'Light Bill Upload Customer',
         phone: 'Pending Contact',
         city: 'Sangli',
         systemInterest: 'Solar Inquiry with Light Bill Attachment',
         hasLightBill: true,
         billFileName: file.name,
-        message: `Customer uploaded light bill: ${file.name} (${(file.size / 1024).toFixed(1)} KB) via Golden Solar Assistant Chatbot.`,
+        message: `Customer uploaded light bill file: ${file.name} (${(file.size / 1024).toFixed(1)} KB) via Chatbot button.`,
         source: 'Golden Solar Assistant Chatbot',
         status: 'New'
       };
       await submitInquiry(payload);
 
       addBotResponse({
-        text: `✅ Your electricity bill (${file.name}) has been uploaded and recorded successfully!\n\nOur solar engineers will analyze your power consumption slab and prepare your custom proposal. Would you like a callback or a formal quotation?`,
+        text: `✅ Your electricity bill (${file.name}) has been uploaded successfully!\n\nGolden Electricals engineers will analyze your bill and prepare your custom solar layout.`,
         quickReplies: [
-          { label: '📞 Request Callback', value: 'flow_callback' },
-          { label: '📋 Get Quote', value: 'flow_quote' }
+          { label: '📞 Request Callback from Team', value: 'flow_callback' },
+          { label: '📋 Request Official Proposal', value: 'flow_quote' },
+          { label: '⬅️ Main Menu', value: 'flow_welcome' }
         ]
       });
-    }, 800);
+    }, 700);
   };
 
   return (
@@ -511,7 +450,7 @@ export default function GoldenSolarChatbot() {
       {!isOpen && (
         <div className="fixed bottom-5 right-5 z-50 flex items-center gap-3">
           
-          {/* Label Tooltip Badge */}
+          {/* Label Badge */}
           <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-solar-950 text-white text-xs font-semibold shadow-xl border border-gold-400/30 animate-bounce">
             <Sparkles className="w-3.5 h-3.5 text-gold-400" />
             <span>Chat with Solar Assistant</span>
@@ -551,7 +490,7 @@ export default function GoldenSolarChatbot() {
               <div>
                 <h3 className="font-heading font-bold text-sm text-white flex items-center gap-1.5">
                   <span>Golden Solar Assistant</span>
-                  <span className="px-1.5 py-0.2 rounded bg-gold-400/20 text-gold-300 text-[10px] uppercase tracking-wider">AI</span>
+                  <span className="px-1.5 py-0.2 rounded bg-gold-400/20 text-gold-300 text-[10px] uppercase tracking-wider">Interactive</span>
                 </h3>
                 <p className="text-[11px] text-solar-200 flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block animate-pulse" />
@@ -586,7 +525,7 @@ export default function GoldenSolarChatbot() {
               onClick={() => setIsMinimized(false)}
               className="w-full h-full bg-solar-900 text-white px-4 flex items-center justify-between"
             >
-              <span className="text-xs font-semibold">Click to resume Solar Assistant</span>
+              <span className="text-xs font-semibold">Click to open Golden Solar Assistant</span>
               <Sparkles className="w-4 h-4 text-gold-400" />
             </button>
           )}
@@ -594,11 +533,11 @@ export default function GoldenSolarChatbot() {
           {/* Expanded Window Body */}
           {!isMinimized && (
             <>
-              {/* Message History Feed */}
+              {/* Message Feed Container */}
               <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-slate-50/70 text-xs sm:text-sm">
                 
                 {messages.map((msg) => (
-                  <div key={msg.id} className="space-y-2">
+                  <div key={msg.id} className="space-y-2.5">
                     <div className={`flex items-start gap-2.5 ${msg.sender === 'user' ? 'flex-row-reverse' : ''}`}>
                       
                       {/* Avatar */}
@@ -607,15 +546,15 @@ export default function GoldenSolarChatbot() {
                           <Bot className="w-4 h-4" />
                         </div>
                       ) : (
-                        <div className="w-8 h-8 rounded-xl bg-solar-900 text-gold-400 flex items-center justify-center shrink-0 shadow-sm mt-0.5 font-bold text-xs">
+                        <div className="w-8 h-8 rounded-xl bg-solar-900 text-gold-400 flex items-center justify-center shrink-0 shadow-sm mt-0.5 font-bold text-[10px]">
                           YOU
                         </div>
                       )}
 
-                      {/* Message Bubble */}
-                      <div className={`max-w-[82%] p-3.5 rounded-2xl leading-relaxed whitespace-pre-wrap ${
+                      {/* Message Content Bubble */}
+                      <div className={`max-w-[85%] p-3.5 rounded-2xl leading-relaxed whitespace-pre-wrap ${
                         msg.sender === 'user'
-                          ? 'bg-solar-600 text-white rounded-tr-none shadow-md'
+                          ? 'bg-solar-600 text-white rounded-tr-none shadow-md font-semibold'
                           : 'bg-white text-slate-800 rounded-tl-none border border-slate-200/90 shadow-xs'
                       }`}>
                         <p>{msg.text}</p>
@@ -625,16 +564,33 @@ export default function GoldenSolarChatbot() {
                       </div>
                     </div>
 
-                    {/* Quick Replies Buttons */}
+                    {/* Inline File Upload Button if requested */}
+                    {msg.sender === 'bot' && msg.isFileUpload && (
+                      <div className="pl-10 pt-1">
+                        <label className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-solar-500 hover:bg-solar-600 text-white font-bold text-xs shadow-md cursor-pointer transition-all hover:scale-102">
+                          <Upload className="w-4 h-4" />
+                          <span>Select Electricity Bill File (PDF / Image)</span>
+                          <input
+                            type="file"
+                            accept="image/*,.pdf"
+                            onChange={handleFileUpload}
+                            className="hidden"
+                          />
+                        </label>
+                      </div>
+                    )}
+
+                    {/* Interactive Selection Buttons */}
                     {msg.sender === 'bot' && msg.quickReplies && (
-                      <div className="pl-10 flex flex-wrap gap-1.5 pt-1">
+                      <div className="pl-10 flex flex-col gap-1.5 pt-1">
                         {msg.quickReplies.map((qr, idx) => (
                           <button
                             key={idx}
-                            onClick={() => handleQuickReply(qr)}
-                            className="px-3 py-1.5 rounded-xl bg-white hover:bg-solar-50 text-solar-800 hover:text-solar-900 border border-solar-200 text-xs font-semibold shadow-2xs transition-all hover:scale-102 flex items-center gap-1 active:scale-98"
+                            onClick={() => handleOptionSelect(qr)}
+                            className="w-full text-left px-3.5 py-2.5 rounded-xl bg-white hover:bg-solar-50 text-solar-900 border border-solar-200/90 text-xs font-bold shadow-2xs transition-all hover:border-solar-400 flex items-center justify-between group active:scale-98"
                           >
                             <span>{qr.label}</span>
+                            <ChevronRight className="w-3.5 h-3.5 text-solar-400 group-hover:text-solar-600 transition-transform group-hover:translate-x-0.5" />
                           </button>
                         ))}
                       </div>
@@ -643,7 +599,7 @@ export default function GoldenSolarChatbot() {
                   </div>
                 ))}
 
-                {/* Typing Indicator */}
+                {/* Typing Animation */}
                 {isTyping && (
                   <div className="flex items-start gap-2.5">
                     <div className="w-8 h-8 rounded-xl bg-solar-500 text-white flex items-center justify-center shrink-0 shadow-sm">
@@ -671,39 +627,33 @@ export default function GoldenSolarChatbot() {
                 </div>
               )}
 
-              {/* Input Action Bar */}
-              <form onSubmit={handleSendText} className="p-3 bg-white border-t border-slate-200/90 flex items-center gap-2">
-                
-                {/* File Upload Trigger */}
-                <label className="p-2 rounded-xl text-slate-400 hover:text-solar-600 hover:bg-slate-100 cursor-pointer transition-colors shrink-0" title="Upload Light Bill PDF or Photo">
-                  <Paperclip className="w-5 h-5" />
-                  <input
-                    type="file"
-                    accept="image/*,.pdf"
-                    onChange={handleFileUpload}
-                    className="hidden"
-                  />
-                </label>
-
-                {/* Input Textbox */}
-                <input
-                  ref={inputRef}
-                  type="text"
-                  placeholder="Ask about solar panels, estimates or quotes..."
-                  value={inputText}
-                  onChange={(e) => setInputText(e.target.value)}
-                  className="flex-1 py-2.5 px-3.5 rounded-xl border border-slate-200 text-xs sm:text-sm text-slate-800 outline-none focus:ring-2 focus:ring-solar-500 focus:border-solar-500"
-                />
-
-                {/* Send Button */}
+              {/* Persistent Bottom Action Dock */}
+              <div className="p-3 bg-slate-100/90 border-t border-slate-200 flex items-center justify-between gap-1.5 shrink-0">
                 <button
-                  type="submit"
-                  disabled={!inputText.trim()}
-                  className="p-2.5 rounded-xl bg-solar-500 hover:bg-solar-600 disabled:opacity-40 disabled:hover:bg-solar-500 text-white font-bold transition-all shadow-md shrink-0"
+                  onClick={() => handleOptionSelect({ label: '⬅️ Main Menu', value: 'flow_welcome' })}
+                  className="flex-1 py-2 px-2 rounded-xl bg-white hover:bg-slate-200/70 border border-slate-200 text-slate-700 font-bold text-[11px] flex items-center justify-center gap-1 transition-colors shadow-2xs"
                 >
-                  <Send className="w-4 h-4" />
+                  <Home className="w-3.5 h-3.5 text-solar-600" />
+                  <span>Main Menu</span>
                 </button>
-              </form>
+
+                <button
+                  onClick={() => handleOptionSelect({ label: '📋 Get Quote', value: 'flow_quote' })}
+                  className="flex-1 py-2 px-2 rounded-xl bg-solar-500 hover:bg-solar-600 text-white font-bold text-[11px] flex items-center justify-center gap-1 transition-colors shadow-sm"
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>Get Quote</span>
+                </button>
+
+                <button
+                  onClick={() => handleOptionSelect({ label: '📞 Callback', value: 'flow_callback' })}
+                  className="flex-1 py-2 px-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-[11px] flex items-center justify-center gap-1 transition-colors shadow-sm"
+                >
+                  <Phone className="w-3.5 h-3.5" />
+                  <span>Callback</span>
+                </button>
+              </div>
+
             </>
           )}
 
