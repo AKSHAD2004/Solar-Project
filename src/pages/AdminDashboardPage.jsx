@@ -32,6 +32,7 @@ export default function AdminDashboardPage({ onLogout }) {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
+  const [sourceFilter, setSourceFilter] = useState('All'); // Source filter state
   const [activeInquiry, setActiveInquiry] = useState(null);
   const [responseNote, setResponseNote] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('Pending');
@@ -58,11 +59,16 @@ export default function AdminDashboardPage({ onLogout }) {
 
   const handleSaveResponse = async () => {
     if (!activeInquiry) return;
-    setSaving(true);
-    const updatedList = await updateInquiryStatus(activeInquiry.id, selectedStatus, responseNote);
+    const targetId = activeInquiry.id;
+    const newStatus = selectedStatus;
+    const newNote = responseNote;
+
+    // Immediately close modal box for instant visual feedback
+    setActiveInquiry(null);
+
+    // Save status and admin notes to Firestore / state
+    const updatedList = await updateInquiryStatus(targetId, newStatus, newNote);
     setInquiries(updatedList);
-    setActiveInquiry(prev => ({ ...prev, status: selectedStatus, adminNote: responseNote }));
-    setSaving(false);
   };
 
   const handleDelete = async (id) => {
@@ -76,6 +82,38 @@ export default function AdminDashboardPage({ onLogout }) {
     }
   };
 
+  // Helper check for chatbot source
+  const isChatbotSource = (item) => {
+    return (item.source || '').toLowerCase().includes('chatbot');
+  };
+
+  // Helper check for callback request
+  const isCallbackRequest = (item) => {
+    const text = ((item.systemInterest || '') + ' ' + (item.message || '') + ' ' + (item.fullName || '') + ' ' + (item.phone || '')).toLowerCase();
+    return text.includes('callback') || text.includes('call back') || text.includes('phone call') || text.includes('call asap') || text.includes('direct contact') || text.includes('pending');
+  };
+
+  // Helper check for valid phone number
+  const hasValidPhone = (phoneStr) => {
+    if (!phoneStr) return false;
+    const lower = phoneStr.toLowerCase();
+    if (lower.includes('pending') || lower.includes('direct') || lower.includes('contact') || lower.includes('callback')) {
+      return false;
+    }
+    return true;
+  };
+
+  // Metrics Calculations
+  const totalLeads = inquiries.length;
+  const pendingLeads = inquiries.filter(i => i.status === 'Pending').length;
+  const contactedLeads = inquiries.filter(i => i.status === 'Contacted').length;
+  const resolvedLeads = inquiries.filter(i => i.status === 'Quote Sent' || i.status === 'Resolved').length;
+
+  const chatbotTotal = inquiries.filter(isChatbotSource).length;
+  const chatbotCallbacks = inquiries.filter(i => isChatbotSource(i) && isCallbackRequest(i)).length;
+  const chatbotInquiries = inquiries.filter(i => isChatbotSource(i) && !isCallbackRequest(i)).length;
+  const websiteFormCount = inquiries.filter(i => !isChatbotSource(i)).length;
+
   // Filtered list
   const filteredInquiries = inquiries.filter(item => {
     const matchesSearch = 
@@ -85,14 +123,15 @@ export default function AdminDashboardPage({ onLogout }) {
       (item.systemInterest || '').toLowerCase().includes(searchQuery.toLowerCase());
 
     const matchesStatus = statusFilter === 'All' || item.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
 
-  // Calculate Metrics
-  const totalLeads = inquiries.length;
-  const pendingLeads = inquiries.filter(i => i.status === 'Pending').length;
-  const contactedLeads = inquiries.filter(i => i.status === 'Contacted').length;
-  const resolvedLeads = inquiries.filter(i => i.status === 'Quote Sent' || i.status === 'Resolved').length;
+    let matchesSource = true;
+    if (sourceFilter === 'Chatbot_All') matchesSource = isChatbotSource(item);
+    else if (sourceFilter === 'Chatbot_Callbacks') matchesSource = isChatbotSource(item) && isCallbackRequest(item);
+    else if (sourceFilter === 'Chatbot_Inquiries') matchesSource = isChatbotSource(item) && !isCallbackRequest(item);
+    else if (sourceFilter === 'Website_Form') matchesSource = !isChatbotSource(item);
+
+    return matchesSearch && matchesStatus && matchesSource;
+  });
 
   return (
     <div className="py-8 bg-slate-50 min-h-screen space-y-8">
@@ -109,7 +148,7 @@ export default function AdminDashboardPage({ onLogout }) {
               Customer Solar Inquiry Dashboard
             </h1>
             <p className="text-solar-200 text-xs sm:text-sm max-w-xl">
-              Manage incoming customer requests, review light bills, respond with quotes, update lead status, or delete quotes directly in Firestore.
+              Track incoming leads, review light bills, manage Chatbot Callback Requests vs Solar Inquiries, and update status in Firestore.
             </p>
           </div>
 
@@ -136,78 +175,119 @@ export default function AdminDashboardPage({ onLogout }) {
         </div>
 
         {/* Metric Cards Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-          <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-solar-50 text-solar-600 flex items-center justify-center shrink-0">
-              <Users className="w-6 h-6" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center gap-3.5">
+            <div className="w-11 h-11 rounded-2xl bg-solar-50 text-solar-600 flex items-center justify-center shrink-0">
+              <Users className="w-5 h-5" />
             </div>
             <div>
-              <p className="text-2xl font-extrabold text-slate-900">{totalLeads}</p>
-              <p className="text-xs font-semibold text-slate-500">Total Customer Inquiries</p>
+              <p className="text-xl font-extrabold text-slate-900">{totalLeads}</p>
+              <p className="text-[11px] font-semibold text-slate-500">Total Solar Leads</p>
             </div>
           </div>
 
-          <div className="bg-white p-5 rounded-2xl border border-amber-200/80 shadow-sm flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
-              <Clock className="w-6 h-6" />
+          <div className="bg-white p-4.5 rounded-2xl border border-purple-200/80 shadow-sm flex items-center gap-3.5">
+            <div className="w-11 h-11 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
+              <Bot className="w-5 h-5" />
             </div>
             <div>
-              <p className="text-2xl font-extrabold text-amber-600">{pendingLeads}</p>
-              <p className="text-xs font-semibold text-slate-500">Pending Action Needed</p>
+              <p className="text-xl font-extrabold text-purple-700">{chatbotTotal}</p>
+              <p className="text-[11px] font-semibold text-purple-900">Total Chatbot Leads</p>
             </div>
           </div>
 
-          <div className="bg-white p-5 rounded-2xl border border-blue-200/80 shadow-sm flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-              <Phone className="w-6 h-6" />
+          <div className="bg-white p-4.5 rounded-2xl border border-amber-200/80 shadow-sm flex items-center gap-3.5">
+            <div className="w-11 h-11 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+              <Phone className="w-5 h-5" />
             </div>
             <div>
-              <p className="text-2xl font-extrabold text-blue-600">{contactedLeads}</p>
-              <p className="text-xs font-semibold text-slate-500">Contacted / Surveyed</p>
+              <p className="text-xl font-extrabold text-amber-600">{chatbotCallbacks}</p>
+              <p className="text-[11px] font-semibold text-slate-600">Chatbot Callbacks</p>
             </div>
           </div>
 
-          <div className="bg-white p-5 rounded-2xl border border-emerald-200/80 shadow-sm flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
-              <CheckCircle2 className="w-6 h-6" />
+          <div className="bg-white p-4.5 rounded-2xl border border-blue-200/80 shadow-sm flex items-center gap-3.5">
+            <div className="w-11 h-11 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+              <FileText className="w-5 h-5" />
             </div>
             <div>
-              <p className="text-2xl font-extrabold text-emerald-600">{resolvedLeads}</p>
-              <p className="text-xs font-semibold text-slate-500">Quotes Sent & Resolved</p>
+              <p className="text-xl font-extrabold text-blue-600">{chatbotInquiries}</p>
+              <p className="text-[11px] font-semibold text-slate-600">Chatbot Inquiries</p>
+            </div>
+          </div>
+
+          <div className="bg-white p-4.5 rounded-2xl border border-emerald-200/80 shadow-sm flex items-center gap-3.5 sm:col-span-2 lg:col-span-1">
+            <div className="w-11 h-11 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+              <CheckCircle2 className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-xl font-extrabold text-emerald-600">{resolvedLeads}</p>
+              <p className="text-[11px] font-semibold text-slate-600">Quotes & Resolved</p>
             </div>
           </div>
         </div>
 
-        {/* Filter & Search Bar */}
-        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
+        {/* Source & Status Filter Bar */}
+        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">
           
-          {/* Search Input */}
-          <div className="relative w-full md:w-80">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              placeholder="Search by name, phone or city..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 rounded-xl border border-slate-200 text-xs sm:text-sm focus:ring-2 focus:ring-solar-500 focus:border-solar-500 outline-none"
-            />
+          {/* Top Row: Search & Source Tabs */}
+          <div className="flex flex-col lg:flex-row items-center justify-between gap-4">
+            
+            {/* Search Input */}
+            <div className="relative w-full lg:w-80">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Search by name, phone or city..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 rounded-xl border border-slate-200 text-xs sm:text-sm focus:ring-2 focus:ring-solar-500 focus:border-solar-500 outline-none"
+              />
+            </div>
+
+            {/* Lead Source Filter Buttons */}
+            <div className="flex items-center gap-1.5 overflow-x-auto w-full lg:w-auto pb-1 lg:pb-0">
+              {[
+                { label: `All Sources (${totalLeads})`, val: 'All' },
+                { label: `🤖 Chatbot All (${chatbotTotal})`, val: 'Chatbot_All' },
+                { label: `📞 Chatbot Callbacks (${chatbotCallbacks})`, val: 'Chatbot_Callbacks' },
+                { label: `📋 Chatbot Inquiries (${chatbotInquiries})`, val: 'Chatbot_Inquiries' },
+                { label: `🌐 Website Form (${websiteFormCount})`, val: 'Website_Form' },
+              ].map(src => (
+                <button
+                  key={src.val}
+                  onClick={() => setSourceFilter(src.val)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                    sourceFilter === src.val
+                      ? 'bg-purple-700 text-white shadow-sm ring-2 ring-purple-400/30'
+                      : 'bg-purple-50 text-purple-900 hover:bg-purple-100 border border-purple-200/60'
+                  }`}
+                >
+                  {src.label}
+                </button>
+              ))}
+            </div>
+
           </div>
 
-          {/* Status Tabs */}
-          <div className="flex items-center gap-1.5 overflow-x-auto w-full md:w-auto pb-1 md:pb-0">
-            {['All', 'Pending', 'Contacted', 'Quote Sent', 'Resolved'].map(st => (
-              <button
-                key={st}
-                onClick={() => setStatusFilter(st)}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
-                  statusFilter === st
-                    ? 'bg-solar-600 text-white shadow-sm'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
-              >
-                {st}
-              </button>
-            ))}
+          {/* Bottom Row: Status Filter Tabs */}
+          <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2 overflow-x-auto">
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider shrink-0">Status Filter:</span>
+            <div className="flex items-center gap-1.5">
+              {['All', 'Pending', 'Contacted', 'Quote Sent', 'Resolved'].map(st => (
+                <button
+                  key={st}
+                  onClick={() => setStatusFilter(st)}
+                  className={`px-3 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+                    statusFilter === st
+                      ? 'bg-solar-600 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  {st}
+                </button>
+              ))}
+            </div>
           </div>
 
         </div>
@@ -261,19 +341,35 @@ export default function AdminDashboardPage({ onLogout }) {
                         </span>
                       )}
 
-                      {item.source && item.source.toLowerCase().includes('chatbot') && (
-                        <span className="px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 border border-purple-200 text-[10px] font-bold flex items-center gap-1">
-                          <Bot className="w-3 h-3 text-purple-600" />
-                          <span>Chatbot Assistant Lead</span>
+                      {isChatbotSource(item) ? (
+                        <>
+                          <span className="px-2.5 py-0.5 rounded-lg bg-purple-100 text-purple-900 border border-purple-300 text-[11px] font-extrabold flex items-center gap-1">
+                            <Bot className="w-3 h-3 text-purple-700" />
+                            <span>Chatbot Assistant Lead</span>
+                          </span>
+
+                          {isCallbackRequest(item) && (
+                            <span className="px-3 py-1 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 text-slate-950 font-black text-xs shadow-md border border-amber-300 flex items-center gap-1.5 animate-pulse">
+                              <Phone className="w-3.5 h-3.5 text-slate-950 shrink-0" />
+                              <span>📞 CALLBACK REQUEST</span>
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200 text-[10px] font-bold flex items-center gap-1">
+                          <FileText className="w-3 h-3 text-slate-500" />
+                          <span>🌐 Website Form</span>
                         </span>
                       )}
                     </div>
 
                     <div className="flex flex-wrap items-center gap-4 text-xs text-slate-600">
-                      <span className="flex items-center gap-1">
-                        <Phone className="w-3.5 h-3.5 text-solar-600" />
-                        <a href={`tel:${item.phone}`} className="hover:underline font-semibold">{item.phone}</a>
-                      </span>
+                      {hasValidPhone(item.phone) && (
+                        <span className="flex items-center gap-1">
+                          <Phone className="w-3.5 h-3.5 text-solar-600" />
+                          <a href={`tel:${item.phone}`} className="hover:underline font-semibold">{item.phone}</a>
+                        </span>
+                      )}
                       
                       {item.email && (
                         <span className="flex items-center gap-1">
@@ -288,12 +384,20 @@ export default function AdminDashboardPage({ onLogout }) {
                       </span>
                     </div>
 
-                    <p className="text-xs text-slate-700 font-medium">
+                    <p className={`text-xs p-2.5 rounded-xl font-medium transition-colors ${
+                      isCallbackRequest(item)
+                        ? 'bg-amber-100 text-amber-950 border-l-4 border-amber-500 font-bold shadow-xs'
+                        : 'text-slate-700'
+                    }`}>
                       <strong>Solar Interest:</strong> {item.systemInterest}
                     </p>
 
                     {item.message && (
-                      <p className="text-xs text-slate-500 bg-slate-100/70 p-2 rounded-lg max-w-2xl italic">
+                      <p className={`text-xs p-3 rounded-xl max-w-2xl italic transition-colors ${
+                        isCallbackRequest(item)
+                          ? 'bg-amber-50/90 text-amber-950 border border-amber-300/80 font-semibold shadow-2xs'
+                          : 'text-slate-600 bg-slate-100/70'
+                      }`}>
                         "{item.message}"
                       </p>
                     )}
@@ -364,7 +468,13 @@ export default function AdminDashboardPage({ onLogout }) {
               <p><strong>Customer Name:</strong> {activeInquiry.fullName}</p>
               <p><strong>Phone:</strong> {activeInquiry.phone}</p>
               <p><strong>Location:</strong> {activeInquiry.city}</p>
-              <p><strong>Requirement:</strong> {activeInquiry.systemInterest}</p>
+              <p className={`p-2 rounded-lg font-semibold ${
+                isCallbackRequest(activeInquiry) 
+                  ? 'bg-amber-100 text-amber-950 border-l-4 border-amber-500 font-bold' 
+                  : 'text-slate-800'
+              }`}>
+                <strong>Requirement:</strong> {activeInquiry.systemInterest}
+              </p>
               {activeInquiry.billFileName && (
                 <p className="text-emerald-700 font-semibold">
                   <strong>Attached Bill:</strong> {activeInquiry.billFileName}

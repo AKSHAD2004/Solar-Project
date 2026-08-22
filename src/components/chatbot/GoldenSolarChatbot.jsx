@@ -125,7 +125,7 @@ export default function GoldenSolarChatbot() {
       
       await submitInquiry({
         fullName: 'Residential Chatbot Customer',
-        phone: 'Pending Callback',
+        phone: '',
         city: 'Sangli / Western Maharashtra',
         systemInterest: `Residential Rooftop Solar (${slabText})`,
         message: `Residential Solar lead collected via Chatbot buttons. Consumption slab: ${slabText}`,
@@ -161,7 +161,7 @@ export default function GoldenSolarChatbot() {
     if (val.startsWith('com_')) {
       await submitInquiry({
         fullName: 'Commercial Solar Customer',
-        phone: 'Pending Callback',
+        phone: '',
         city: 'Sangli Commercial Zone',
         systemInterest: 'Commercial Solar System',
         message: `Commercial Solar lead via Chatbot. Facility type: ${label}`,
@@ -197,7 +197,7 @@ export default function GoldenSolarChatbot() {
     if (val.startsWith('ind_')) {
       await submitInquiry({
         fullName: 'Industrial Solar Customer',
-        phone: 'Pending Callback',
+        phone: '',
         city: 'Miraj / Sangli Industrial Belt',
         systemInterest: 'Industrial Solar Turnkey Project',
         message: `Industrial Solar inquiry via Chatbot. Unit type: ${label}`,
@@ -233,7 +233,7 @@ export default function GoldenSolarChatbot() {
     if (val.startsWith('farm_')) {
       await submitInquiry({
         fullName: 'Solar Farm Project Prospect',
-        phone: 'Pending Callback',
+        phone: '',
         city: 'Sangli / Maharashtra Region',
         systemInterest: `Solar Farm Project (${label})`,
         message: `Solar Farm inquiry via Chatbot. Scale: ${label}`,
@@ -317,7 +317,7 @@ export default function GoldenSolarChatbot() {
     if (val === 'flow_quote') {
       await submitInquiry({
         fullName: 'Quotation Prospect',
-        phone: 'Pending Callback',
+        phone: '',
         city: 'Sangli Region',
         systemInterest: 'Official Tata Solar Quotation Request',
         message: 'Quotation request generated via Chatbot action button.',
@@ -368,7 +368,7 @@ export default function GoldenSolarChatbot() {
 
       await submitInquiry({
         fullName: 'Callback Request Customer',
-        phone: 'Pending Direct Contact',
+        phone: '',
         city: 'Sangli',
         systemInterest: `Callback Request (${timeSlot})`,
         message: `Customer requested callback via Chatbot button for time window: ${timeSlot}`,
@@ -422,7 +422,7 @@ export default function GoldenSolarChatbot() {
       
       const payload = {
         fullName: 'Light Bill Upload Customer',
-        phone: 'Pending Contact',
+        phone: '',
         city: 'Sangli',
         systemInterest: 'Solar Inquiry with Light Bill Attachment',
         hasLightBill: true,
