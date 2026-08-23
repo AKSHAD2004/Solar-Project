@@ -40,7 +40,19 @@ export default function GoldenSolarChatbot() {
 
   const messagesEndRef = useRef(null);
 
-  // Open chatbot without auto-scrolling
+  // Scroll feed down ONLY when user clicks an option (messages > 1)
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    // Stays still on initial open (messages.length === 1); scrolls only on user option clicks
+    if (isOpen && !isMinimized && messages.length > 1) {
+      scrollToBottom();
+    }
+  }, [messages, isTyping, isOpen, isMinimized]);
+
+  // Open chatbot (stays still)
   const handleOpen = () => {
     setIsOpen(true);
     setIsMinimized(false);
