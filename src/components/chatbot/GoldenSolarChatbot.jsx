@@ -40,18 +40,7 @@ export default function GoldenSolarChatbot() {
 
   const messagesEndRef = useRef(null);
 
-  // Auto-scroll to bottom of chat
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
-  useEffect(() => {
-    if (isOpen && !isMinimized) {
-      scrollToBottom();
-    }
-  }, [messages, isTyping, isOpen, isMinimized, phoneInputText]);
-
-  // Open chatbot
+  // Open chatbot without auto-scrolling
   const handleOpen = () => {
     setIsOpen(true);
     setIsMinimized(false);
